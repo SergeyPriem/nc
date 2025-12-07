@@ -52,14 +52,50 @@ init_genai()
 # ==========================================
 
 def display_pdf(file_path: str) -> None:
-    """Відображає PDF у браузері через iframe."""
+    """Відображає PDF у браузері через iframe з фіксом для Chrome."""
     try:
         with open(file_path, "rb") as f:
-            base64_pdf = base64.b64encode(f.read()).decode('utf-8')
-        pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="800" type="application/pdf"></iframe>'
+            pdf_bytes = f.read()
+            base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
+        
+        # Додаємо MIME type та параметри для Chrome
+        pdf_display = f'''
+            <iframe 
+                src="data:application/pdf;base64,{base64_pdf}#toolbar=1&navpanes=0&scrollbar=1" 
+                width="100%" 
+                height="800" 
+                type="application/pdf"
+                style="border: none;">
+                <p>Ваш браузер не підтримує вбудований перегляд PDF. 
+                   <a href="data:application/pdf;base64,{base64_pdf}" download="drawing.pdf">Завантажте файл</a>
+                </p>
+            </iframe>
+        '''
         st.markdown(pdf_display, unsafe_allow_html=True)
+        
+        # Додаємо кнопку завантаження як запасний варіант
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.download_button(
+                label="📥 Якщо PDF не відображається - завантажте файл",
+                data=pdf_bytes,
+                file_name="drawing.pdf",
+                mime="application/pdf",
+                help="Chrome може блокувати вбудований перегляд PDF"
+            )
     except Exception as e:
         st.error(f"❌ Помилка відображення PDF: {e}")
+        # Фоллбек - кнопка завантаження
+        try:
+            with open(file_path, "rb") as f:
+                st.download_button(
+                    label="📥 Завантажити PDF",
+                    data=f.read(),
+                    file_name="drawing.pdf",
+                    mime="application/pdf"
+                )
+        except:
+            st.error("Неможливо завантажити файл")
 
 def clean_json_text(text: str) -> str:
     """Очищає відповідь AI від зайвих символів markdown."""
@@ -280,60 +316,95 @@ with st.sidebar:
     st.divider()
     st.header("📚 Бібліотека Стандартів")
     
-    # Вибір джерела файлів
-    source_option = st.radio(
-        "Джерело файлів правил:",
-        ["📁 Локальні файли (rules/)", "☁️ Завантажити файли"],
-        help="Оберіть звідки брати JSON файли зі стандартами"
+    # Завантаження файлів через інтерфейс
+    st.caption("Завантажити додаткові файли:")
+    uploaded_json_files = st.file_uploader(
+        "Оберіть JSON файли",
+        type=["json"],
+        accept_multiple_files=True,
+        help="Додаткові правила, які доповнять файли з папки rules/",
+        key="json_uploader"
     )
     
+    # Зберігаємо завантажені файли в session_state
+    if uploaded_json_files:
+        if 'uploaded_rules_files' not in st.session_state:
+            st.session_state.uploaded_rules_files = {}
+        
+        for uploaded_file in uploaded_json_files:
+            st.session_state.uploaded_rules_files[uploaded_file.name] = uploaded_file.getvalue()
+    
+    st.divider()
+    
+    # Збираємо всі доступні файли
+    all_files = {}
+    
+    # 1. Локальні файли з папки rules/
+    Path(RULES_DIR).mkdir(exist_ok=True)
+    local_json_files = list(Path(RULES_DIR).glob("*.json"))
+    for file_path in local_json_files:
+        all_files[f"local:{file_path.name}"] = {
+            "name": file_path.name,
+            "path": str(file_path),
+            "source": "📁 Локальні",
+            "default": True  # Локальні файли включені за замовчуванням
+        }
+    
+    # 2. Завантажені файли
+    if 'uploaded_rules_files' in st.session_state:
+        for file_name, file_content in st.session_state.uploaded_rules_files.items():
+            # Створюємо тимчасовий файл
+            temp_path = Path(tempfile.gettempdir()) / f"uploaded_{file_name}"
+            temp_path.write_bytes(file_content)
+            
+            all_files[f"upload:{file_name}"] = {
+                "name": file_name,
+                "path": str(temp_path),
+                "source": "☁️ Завантажені",
+                "default": False  # Завантажені не включені за замовчуванням
+            }
+    
+    # Відображення всіх файлів
     selected_files = []
     
-    if source_option == "📁 Локальні файли (rules/)":
-        st.caption("Файли з папки rules/:")
+    if all_files:
+        st.caption("Оберіть файли для використання:")
         
-        # Створюємо папку rules якщо її немає
-        Path(RULES_DIR).mkdir(exist_ok=True)
-
-        json_files = list(Path(RULES_DIR).glob("*.json"))
-
-        if not json_files:
-            st.info("📂 Файлів не знайдено. Додай JSON в папку rules/ або використай завантаження")
-        else:
-            for file_path in json_files:
-                file_name = file_path.name
-                if st.checkbox(f"📄 {file_name}", value=False, key=f"cb_local_{file_name}"):
-                    selected_files.append(str(file_path))
+        # Групуємо по джерелу для кращого відображення
+        local_files = {k: v for k, v in all_files.items() if v["source"] == "📁 Локальні"}
+        uploaded_files = {k: v for k, v in all_files.items() if v["source"] == "☁️ Завантажені"}
+        
+        # Локальні файли
+        if local_files:
+            st.markdown("**📁 Файли з папки rules/ (включені за замовчуванням):**")
+            for key, file_info in local_files.items():
+                if st.checkbox(
+                    f"{file_info['name']}",
+                    value=file_info['default'],
+                    key=f"cb_{key}",
+                    help=f"Джерело: {file_info['source']}"
+                ):
+                    selected_files.append(file_info['path'])
+        
+        # Завантажені файли
+        if uploaded_files:
+            st.markdown("**☁️ Завантажені файли:**")
+            for key, file_info in uploaded_files.items():
+                if st.checkbox(
+                    f"{file_info['name']}",
+                    value=file_info['default'],
+                    key=f"cb_{key}",
+                    help=f"Джерело: {file_info['source']}"
+                ):
+                    selected_files.append(file_info['path'])
+    else:
+        st.info("📂 Файлів не знайдено. Додайте JSON в папку rules/ або завантажте через форму вище")
     
-    else:  # Завантаження файлів
-        st.caption("Завантажте JSON файли зі стандартами:")
-        
-        uploaded_json_files = st.file_uploader(
-            "Оберіть JSON файли",
-            type=["json"],
-            accept_multiple_files=True,
-            help="Можна вибрати декілька файлів одночасно"
-        )
-        
-        if uploaded_json_files:
-            # Зберігаємо завантажені файли тимчасово
-            if 'uploaded_rules_files' not in st.session_state:
-                st.session_state.uploaded_rules_files = {}
-            
-            for uploaded_file in uploaded_json_files:
-                # Зберігаємо в session_state
-                st.session_state.uploaded_rules_files[uploaded_file.name] = uploaded_file.getvalue()
-            
-            # Чекбокси для вибору
-            st.caption("Оберіть файли для використання:")
-            for file_name in st.session_state.uploaded_rules_files.keys():
-                if st.checkbox(f"📄 {file_name}", value=True, key=f"cb_upload_{file_name}"):
-                    # Створюємо тимчасовий файл
-                    temp_path = Path(tempfile.gettempdir()) / file_name
-                    temp_path.write_bytes(st.session_state.uploaded_rules_files[file_name])
-                    selected_files.append(str(temp_path))
-        else:
-            st.info("👆 Завантажте JSON файли з вашого комп'ютера")
+    # Кнопка очистки завантажених файлів
+    if 'uploaded_rules_files' in st.session_state and st.session_state.uploaded_rules_files:
+        if st.button("🗑️ Очистити завантажені файли"):
+            st.session_state.uploaded_rules_files = {}
+            st.rerun()
 
     st.divider()
     
