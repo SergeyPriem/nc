@@ -751,7 +751,7 @@ with main_tab2:
         type=["csv"],
         accept_multiple_files=True,
         key="csv_files",
-        help="Виберіть рівно 2 CSV файли з однієї папки"
+        # help="Виберіть рівно 2 CSV файли з однієї папки"
     )
     
     # Перевірка кількості файлів
