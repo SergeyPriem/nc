@@ -26,14 +26,22 @@ st.set_page_config(
 
 # Функція для завантаження CSS
 def hide_branding():
-    hide_styles = """
+    st.markdown("""
         <style>
-            ._profilePreview_gzau3_63 {
+            /* [class^="..."] означає "клас, що починається з..." */
+            div[class^="_profilePreview"] {
                 display: none !important;
             }
         </style>
-    """
-    st.markdown(hide_styles, unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
+    # hide_styles = """
+    #     <style>
+    #         ._profilePreview_gzau3_63 {
+    #             display: none !important;
+    #         }
+    #     </style>
+    # """
+    # st.markdown(hide_styles, unsafe_allow_html=True)
 
 hide_branding()
 
