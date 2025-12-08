@@ -18,7 +18,7 @@ from typing import List, Dict, Optional
 # ==========================================
 st.set_page_config(
     layout="wide",
-    page_title="AI Drawing Engineer Pro",
+    page_title="Drawing Review",
     page_icon="🏗️",
     initial_sidebar_state="expanded"
 )
