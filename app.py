@@ -747,15 +747,10 @@ with main_tab2:
     )
     
     # Перевірка кількості файлів
-    if csv_files:
-        if len(csv_files) != 2:
-            st.warning(f"⚠️ Потрібно вибрати рівно 2 файли. Зараз вибрано: {len(csv_files)}")
-        else:
-            csv_file1, csv_file2 = csv_files[0], csv_files[1]
-        else:
-            csv_file1, csv_file2 = csv_files[0], csv_files[1]
-            
-            with st.spinner("🔄 Завантаження та порівняння файлів..."):
+    if csv_files and len(csv_files) == 2:
+        csv_file1, csv_file2 = csv_files[0], csv_files[1]
+        
+        with st.spinner("🔄 Завантаження та порівняння файлів..."):
                 # Завантажуємо обидва файли
                 df1 = load_csv_file(csv_file1)
                 df2 = load_csv_file(csv_file2)
@@ -822,6 +817,8 @@ with main_tab2:
                             st.code(file_path.replace('/', '\\'), language=None)
                     else:
                         st.info("✅ Видалених файлів не знайдено")
+    elif csv_files and len(csv_files) != 2:
+        st.warning(f"⚠️ Потрібно вибрати рівно 2 файли. Зараз вибрано: {len(csv_files)}")
     else:
         st.info("👆 Оберіть 2 CSV файли для порівняння (можна вибрати обидва одночасно)")
 
