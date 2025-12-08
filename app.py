@@ -279,28 +279,6 @@ def compare_csv_files(df1: pd.DataFrame, df2: pd.DataFrame, file1_name: str, fil
         'new_name': new_name
     }
 
-def create_copy_button(file_path: str, key_suffix: str):
-    windows_path = file_path.replace('/', '\\')
-    
-    copy_btn = f"""
-        <button onclick="navigator.clipboard.writeText('{windows_path}').then(() => {{
-            this.innerHTML = '✅ Скопійовано!';
-            setTimeout(() => {{ this.innerHTML = '📋 Копіювати'; }}, 2000);
-        }})" 
-        style="padding: 4px 12px; 
-               background-color: #4CAF50; 
-               color: white; 
-               border: none; 
-               border-radius: 4px; 
-               cursor: pointer;
-               font-size: 12px;
-               margin-left: 10px;">
-            📋 Копіювати
-        </button>
-    """
-    
-    st.markdown(f"{file_path} {copy_btn}", unsafe_allow_html=True)
-
 if 'analysis_df' not in st.session_state:
     st.session_state.analysis_df = None
 if 'last_uploaded_filename' not in st.session_state:
@@ -497,11 +475,12 @@ with main_tab1:
                 analyze_btn = st.button(
                     "🚀 Запустити перевірку",
                     type="primary",
-                    use_container_width=True
+                    use_container_width=True,
+                    key="analyze_button"
                 )
             with col2:
                 if st.session_state.analysis_df is not None:
-                    if st.button("🗑️ Очистити", use_container_width=True):
+                    if st.button("🗑️ Очистити", use_container_width=True, key="clear_button"):
                         st.session_state.analysis_df = None
                         st.rerun()
             
