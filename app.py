@@ -737,42 +737,41 @@ with main_tab2:
     st.subheader("⚖️ Порівняння файлів CSV")
     st.caption("Завантажте два CSV файли для порівняння змін у файловій структурі")
     
-    col1, col2 = st.columns(2)
+    # Одна кнопка для завантаження 2х файлів
+    csv_files = st.file_uploader(
+        "📂 Оберіть 2 CSV файли для порівняння",
+        type=["csv"],
+        accept_multiple_files=True,
+        key="csv_files",
+        help="Виберіть рівно 2 CSV файли з однієї папки"
+    )
     
-    with col1:
-        csv_file1 = st.file_uploader(
-            "📂 Перший CSV файл",
-            type=["csv"],
-            key="csv_file1",
-            help="Завантажте CSV файл з інформацією про файли"
-        )
-    
-    with col2:
-        csv_file2 = st.file_uploader(
-            "📂 Другий CSV файл",
-            type=["csv"],
-            key="csv_file2",
-            help="Завантажте CSV файл з інформацією про файли"
-        )
-    
-    if csv_file1 and csv_file2:
-        with st.spinner("🔄 Завантаження та порівняння файлів..."):
-            # Завантажуємо обидва файли
-            df1 = load_csv_file(csv_file1)
-            df2 = load_csv_file(csv_file2)
+    # Перевірка кількості файлів
+    if csv_files:
+        if len(csv_files) != 2:
+            st.warning(f"⚠️ Потрібно вибрати рівно 2 файли. Зараз вибрано: {len(csv_files)}")
+        else:
+            csv_file1, csv_file2 = csv_files[0], csv_files[1]
+        else:
+            csv_file1, csv_file2 = csv_files[0], csv_files[1]
             
-            if df1 is not None and df2 is not None:
-                # Порівнюємо файли
-                comparison = compare_csv_files(df1, df2, csv_file1.name, csv_file2.name)
+            with st.spinner("🔄 Завантаження та порівняння файлів..."):
+                # Завантажуємо обидва файли
+                df1 = load_csv_file(csv_file1)
+                df2 = load_csv_file(csv_file2)
                 
-                # Відображаємо інформацію про файли
-                st.success("✅ Файли успішно порівняно!")
-                
-                info_col1, info_col2 = st.columns(2)
-                with info_col1:
-                    st.info(f"📅 **Старіший файл:** {comparison['old_name']}")
-                with info_col2:
-                    st.info(f"📅 **Новіший файл:** {comparison['new_name']}")
+                if df1 is not None and df2 is not None:
+                    # Порівнюємо файли
+                    comparison = compare_csv_files(df1, df2, csv_file1.name, csv_file2.name)
+                    
+                    # Відображаємо інформацію про файли
+                    st.success("✅ Файли успішно порівняно!")
+                    
+                    info_col1, info_col2 = st.columns(2)
+                    with info_col1:
+                        st.info(f"📅 **Старіший файл:** {comparison['old_name']}")
+                    with info_col2:
+                        st.info(f"📅 **Новіший файл:** {comparison['new_name']}")
                 
                 st.divider()
                 
@@ -799,14 +798,8 @@ with main_tab2:
                     if comparison['added']:
                         st.subheader("Список нових файлів")
                         for idx, file_path in enumerate(sorted(comparison['added']), 1):
-                            with st.container():
-                                col_a, col_b = st.columns([4, 1])
-                                with col_a:
-                                    st.text(f"{idx}. {file_path}")
-                                with col_b:
-                                    if st.button("📋 Копіювати", key=f"copy_new_{idx}"):
-                                        st.code(file_path.replace('/', '\\'), language=None)
-                                        st.success("Скопіюйте шлях вище ⬆️")
+                            st.text(f"{idx}.")
+                            st.code(file_path.replace('/', '\\'), language=None)
                     else:
                         st.info("✅ Нових файлів не знайдено")
                 
@@ -815,14 +808,8 @@ with main_tab2:
                     if comparison['modified']:
                         st.subheader("Список змінених файлів")
                         for idx, file_path in enumerate(sorted(comparison['modified']), 1):
-                            with st.container():
-                                col_a, col_b = st.columns([4, 1])
-                                with col_a:
-                                    st.text(f"{idx}. {file_path}")
-                                with col_b:
-                                    if st.button("📋 Копіювати", key=f"copy_mod_{idx}"):
-                                        st.code(file_path.replace('/', '\\'), language=None)
-                                        st.success("Скопіюйте шлях вище ⬆️")
+                            st.text(f"{idx}.")
+                            st.code(file_path.replace('/', '\\'), language=None)
                     else:
                         st.info("✅ Змінених файлів не знайдено")
                 
@@ -831,12 +818,12 @@ with main_tab2:
                     if comparison['deleted']:
                         st.subheader("Список видалених файлів")
                         for idx, file_path in enumerate(sorted(comparison['deleted']), 1):
-                            with st.container():
-                                st.text(f"{idx}. {file_path}")
+                            st.text(f"{idx}.")
+                            st.code(file_path.replace('/', '\\'), language=None)
                     else:
                         st.info("✅ Видалених файлів не знайдено")
     else:
-        st.info("👆 Завантажте два CSV файли для порівняння")
+        st.info("👆 Оберіть 2 CSV файли для порівняння (можна вибрати обидва одночасно)")
 
 # Футер
 st.divider()
