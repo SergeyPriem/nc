@@ -23,6 +23,25 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Функція для завантаження CSS
+def hide_branding():
+    hide_styles = """
+        <style>
+        /* Прибирає футер (нижній логотип) */
+        footer { visibility: hidden; }
+        
+        /* Прибирає кнопку 'Manage App' (якщо ви розробник) */
+        .stDeployButton { display: none; }
+        
+        /* Якщо ви НЕ хочете ховати весь TopBar через config, 
+           але хочете прибрати саме кнопку GitHub/Menu: */
+        #stDecoration { display: none; }
+        </style>
+    """
+    st.markdown(hide_styles, unsafe_allow_html=True)
+
+hide_branding()
+
 # Константи
 RULES_DIR = "rules"
 MAX_RETRIES = 3
