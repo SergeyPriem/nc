@@ -605,4 +605,4 @@ else:
 
 # Футер
 st.divider()
-st.caption("🏗️ AI Drawing Engineer Pro | Powered by Google Gemini")
+# st.caption("🏗️ AI Drawing Engineer Pro | Powered by Google Gemini")
