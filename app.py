@@ -494,13 +494,10 @@ with main_tab1:
             
             col1, col2 = st.columns([3, 1])
             with col1:
-                btn_disabled = len(selected_files) == 0
                 analyze_btn = st.button(
                     "🚀 Запустити перевірку",
                     type="primary",
-                    disabled=btn_disabled,
-                    use_container_width=True,
-                    help="Вибери стандарти в сайдбарі!" if btn_disabled else "Запустити AI аналіз креслення"
+                    use_container_width=True
                 )
             with col2:
                 if st.session_state.analysis_df is not None:
@@ -509,33 +506,36 @@ with main_tab1:
                         st.rerun()
             
             if analyze_btn:
-                st.session_state.analysis_df = None
-                
-                try:
-                    final_rules_text = load_rules_from_json(selected_files)
-                    raw_response = analyze_pdf_drawing(
-                        tmp_file_path,
-                        final_rules_text,
-                        st.session_state.selected_model
-                    )
+                if len(selected_files) == 0:
+                    st.error("❌ Неможливо запустити перевірку без вибраних стандартів!")
+                else:
+                    st.session_state.analysis_df = None
                     
-                    json_response = clean_json_text(raw_response)
-                    data = json.loads(json_response)
+                    try:
+                        final_rules_text = load_rules_from_json(selected_files)
+                        raw_response = analyze_pdf_drawing(
+                            tmp_file_path,
+                            final_rules_text,
+                            st.session_state.selected_model
+                        )
+                        
+                        json_response = clean_json_text(raw_response)
+                        data = json.loads(json_response)
 
-                    if not data:
-                        st.success("✅ Чудово! AI не знайшов жодних порушень вибраних стандартів.")
-                    else:
-                        st.session_state.analysis_df = pd.DataFrame(data)
-                        st.success(f"✅ Аналіз завершено. Знайдено {len(data)} невідповідностей.")
+                        if not data:
+                            st.success("✅ Чудово! AI не знайшов жодних порушень вибраних стандартів.")
+                        else:
+                            st.session_state.analysis_df = pd.DataFrame(data)
+                            st.success(f"✅ Аналіз завершено. Знайдено {len(data)} невідповідностей.")
 
-                except json.JSONDecodeError as e:
-                    st.error(f"❌ Помилка парсингу JSON: {e}")
-                    with st.expander("🐛 Debug Info"):
-                        st.code(json_response if 'json_response' in locals() else raw_response)
-                except Exception as e:
-                    st.error(f"❌ Помилка аналізу: {e}")
-                    with st.expander("🐛 Деталі помилки"):
-                        st.exception(e)
+                    except json.JSONDecodeError as e:
+                        st.error(f"❌ Помилка парсингу JSON: {e}")
+                        with st.expander("🐛 Debug Info"):
+                            st.code(json_response if 'json_response' in locals() else raw_response)
+                    except Exception as e:
+                        st.error(f"❌ Помилка аналізу: {e}")
+                        with st.expander("🐛 Деталі помилки"):
+                            st.exception(e)
 
             if st.session_state.analysis_df is not None:
                 df = st.session_state.analysis_df
