@@ -7,6 +7,7 @@ import os
 import base64
 import time
 import glob
+import re
 from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 from io import BytesIO
 from pathlib import Path
@@ -246,10 +247,113 @@ If no issues found, return: []
     return response.text
 
 # ==========================================
-# 🖥️ ОСНОВНИЙ ІНТЕРФЕЙС
+# 🛠️ ФУНКЦІЇ ДЛЯ ПОРІВНЯННЯ CSV
 # ==========================================
 
-# st.title("🏗️ AI Нормоконтроль: Modular Edition")
+def parse_csv_value(value_str: str) -> str:
+    """Парсить значення з JSON-like формату CSV."""
+    try:
+        # Видаляємо зайві лапки та парсимо JSON
+        cleaned = value_str.strip('"')
+        if cleaned.startswith('{"Value":'):
+            data = json.loads(cleaned)
+            return data.get("Value", "")
+        return cleaned
+    except:
+        return value_str
+
+def load_csv_file(uploaded_file) -> pd.DataFrame:
+    """Завантажує CSV файл і парсить його структуру."""
+    try:
+        # Читаємо CSV
+        df = pd.read_csv(uploaded_file, sep=';', encoding='utf-8-sig')
+        
+        # Парсимо кожну колонку
+        for col in df.columns:
+            df[col] = df[col].apply(parse_csv_value)
+        
+        return df
+    except Exception as e:
+        st.error(f"❌ Помилка читання CSV: {e}")
+        return None
+
+def extract_date_from_filename(filename: str) -> str:
+    """Витягує дату з назви файлу."""
+    # Шукаємо паттерн дати в форматі YYYY-MM-DD або подібному
+    match = re.search(r'(\d{4}[-_]\d{2}[-_]\d{2})', filename)
+    if match:
+        return match.group(1)
+    return ""
+
+def compare_csv_files(df1: pd.DataFrame, df2: pd.DataFrame, file1_name: str, file2_name: str) -> Dict:
+    """Порівнює два CSV файли і повертає різниці."""
+    
+    # Визначаємо, який файл новіший
+    date1 = extract_date_from_filename(file1_name)
+    date2 = extract_date_from_filename(file2_name)
+    
+    if date2 > date1:
+        old_df, new_df = df1, df2
+        old_name, new_name = file1_name, file2_name
+    else:
+        old_df, new_df = df2, df1
+        old_name, new_name = file2_name, file1_name
+    
+    # Використовуємо full_path як ключ для порівняння
+    old_paths = set(old_df['full_path'].values)
+    new_paths = set(new_df['full_path'].values)
+    
+    # Знаходимо різниці
+    added_files = new_paths - old_paths
+    deleted_files = old_paths - new_paths
+    common_files = old_paths & new_paths
+    
+    # Знаходимо змінені файли (де змінились дати)
+    modified_files = []
+    for path in common_files:
+        old_row = old_df[old_df['full_path'] == path].iloc[0]
+        new_row = new_df[new_df['full_path'] == path].iloc[0]
+        
+        if 'last_modif' in old_df.columns and 'last_modif' in new_df.columns:
+            if old_row['last_modif'] != new_row['last_modif']:
+                modified_files.append(path)
+    
+    return {
+        'added': list(added_files),
+        'deleted': list(deleted_files),
+        'modified': modified_files,
+        'old_name': old_name,
+        'new_name': new_name
+    }
+
+def create_copy_button(file_path: str, key_suffix: str):
+    """Створює кнопку для копіювання шляху файлу."""
+    # Конвертуємо до Windows формату якщо потрібно
+    windows_path = file_path.replace('/', '\\')
+    
+    # HTML для кнопки копіювання
+    copy_btn = f"""
+        <button onclick="navigator.clipboard.writeText('{windows_path}').then(() => {{
+            this.innerHTML = '✅ Скопійовано!';
+            setTimeout(() => {{ this.innerHTML = '📋 Копіювати'; }}, 2000);
+        }})" 
+        style="padding: 4px 12px; 
+               background-color: #4CAF50; 
+               color: white; 
+               border: none; 
+               border-radius: 4px; 
+               cursor: pointer;
+               font-size: 12px;
+               margin-left: 10px;">
+            📋 Копіювати
+        </button>
+    """
+    
+    st.markdown(f"{file_path} {copy_btn}", unsafe_allow_html=True)
+
+# ==========================================
+# 🖥️ ОСНОВНИЙ ІНТЕРФЕЙС
+# ==========================================
 
 # Ініціалізація session_state
 if 'analysis_df' not in st.session_state:
@@ -434,188 +538,305 @@ with st.sidebar:
     else:
         st.warning("⚠️ Не вибрано жодного стандарту!")
 
-# --- Головна частина ---
-uploaded_file = st.file_uploader(
-    "📎 Завантаж PDF креслення",
-    type=["pdf"],
-    help="Максимальний розмір файлу залежить від налаштувань Streamlit"
-)
+# ==========================================
+# ГОЛОВНЕ МЕНЮ (ТАБИ)
+# ==========================================
 
-# Очищаємо старі результати при завантаженні нового файлу
-if uploaded_file and uploaded_file.name != st.session_state.last_uploaded_filename:
-    st.session_state.analysis_df = None
-    st.session_state.last_uploaded_filename = uploaded_file.name
+main_tab1, main_tab2 = st.tabs(["🔍 Check", "⚖️ Compare"])
 
-if uploaded_file:
-    # Зберігаємо тимчасовий файл
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-        tmp_file.write(uploaded_file.getvalue())
-        tmp_file_path = tmp_file.name
+# ==========================================
+# TAB 1: CHECK (існуючий функціонал)
+# ==========================================
+with main_tab1:
+    uploaded_file = st.file_uploader(
+        "📎 Завантаж PDF креслення",
+        type=["pdf"],
+        help="Максимальний розмір файлу залежить від налаштувань Streamlit",
+        key="pdf_uploader"
+    )
 
-    # Вкладки для інтерфейсу
-    tab1, tab2 = st.tabs(["📄 Перегляд", "🤖 Аналіз"])
-    
-    with tab1:
-        display_pdf(tmp_file_path)
-    
-    with tab2:
-        st.subheader("🔍 Результат перевірки")
+    # Очищаємо старі результати при завантаженні нового файлу
+    if uploaded_file and uploaded_file.name != st.session_state.last_uploaded_filename:
+        st.session_state.analysis_df = None
+        st.session_state.last_uploaded_filename = uploaded_file.name
+
+    if uploaded_file:
+        # Зберігаємо тимчасовий файл
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+            tmp_file.write(uploaded_file.getvalue())
+            tmp_file_path = tmp_file.name
+
+        # Вкладки для інтерфейсу
+        tab1, tab2 = st.tabs(["📄 Перегляд", "🤖 Аналіз"])
         
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            btn_disabled = len(selected_files) == 0
-            analyze_btn = st.button(
-                "🚀 Запустити перевірку",
-                type="primary",
-                disabled=btn_disabled,
-                use_container_width=True
-            )
-        with col2:
+        with tab1:
+            display_pdf(tmp_file_path)
+        
+        with tab2:
+            st.subheader("🔍 Результат перевірки")
+            
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                btn_disabled = len(selected_files) == 0
+                analyze_btn = st.button(
+                    "🚀 Запустити перевірку",
+                    type="primary",
+                    disabled=btn_disabled,
+                    use_container_width=True
+                )
+            with col2:
+                if st.session_state.analysis_df is not None:
+                    if st.button("🗑️ Очистити", use_container_width=True):
+                        st.session_state.analysis_df = None
+                        st.rerun()
+            
+            if analyze_btn:
+                st.session_state.analysis_df = None
+                
+                try:
+                    final_rules_text = load_rules_from_json(selected_files)
+                    raw_response = analyze_pdf_drawing(
+                        tmp_file_path,
+                        final_rules_text,
+                        st.session_state.selected_model
+                    )
+                    
+                    json_response = clean_json_text(raw_response)
+                    data = json.loads(json_response)
+
+                    if not data:
+                        st.success("✅ Чудово! AI не знайшов жодних порушень вибраних стандартів.")
+                    else:
+                        st.session_state.analysis_df = pd.DataFrame(data)
+                        st.success(f"✅ Аналіз завершено. Знайдено {len(data)} невідповідностей.")
+
+                except json.JSONDecodeError as e:
+                    st.error(f"❌ Помилка парсингу JSON: {e}")
+                    with st.expander("🐛 Debug Info"):
+                        st.code(json_response if 'json_response' in locals() else raw_response)
+                except Exception as e:
+                    st.error(f"❌ Помилка аналізу: {e}")
+                    with st.expander("🐛 Деталі помилки"):
+                        st.exception(e)
+
+            if btn_disabled:
+                st.error("👈 Будь ласка, вибери хоча б один файл стандартів у меню зліва!")
+
+            # Відображення результатів
             if st.session_state.analysis_df is not None:
-                if st.button("🗑️ Очистити", use_container_width=True):
-                    st.session_state.analysis_df = None
-                    st.rerun()
-        
-        if analyze_btn:
-            st.session_state.analysis_df = None
-            
-            try:
-                final_rules_text = load_rules_from_json(selected_files)
-                raw_response = analyze_pdf_drawing(
-                    tmp_file_path,
-                    final_rules_text,
-                    st.session_state.selected_model
+                df = st.session_state.analysis_df
+                
+                # Метрики
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Всього проблем", len(df))
+                with col2:
+                    high_count = len(df[df['criticality'] == 'High']) if 'criticality' in df.columns else 0
+                    st.metric("Критичних", high_count, delta=None, delta_color="inverse")
+                with col3:
+                    unique_pages = df['page'].nunique() if 'page' in df.columns else 0
+                    st.metric("Сторінок з проблемами", unique_pages)
+                
+                st.divider()
+                
+                # Налаштування таблиці
+                gb = GridOptionsBuilder.from_dataframe(df)
+                gb.configure_default_column(
+                    resizable=True,
+                    wrapText=True,
+                    autoHeight=True,
+                    sortable=True,
+                    filter=True
                 )
                 
-                json_response = clean_json_text(raw_response)
-                data = json.loads(json_response)
-
-                if not data:
-                    st.success("✅ Чудово! AI не знайшов жодних порушень вибраних стандартів.")
-                else:
-                    st.session_state.analysis_df = pd.DataFrame(data)
-                    st.success(f"✅ Аналіз завершено. Знайдено {len(data)} невідповідностей.")
-
-            except json.JSONDecodeError as e:
-                st.error(f"❌ Помилка парсингу JSON: {e}")
-                with st.expander("🐛 Debug Info"):
-                    st.code(json_response if 'json_response' in locals() else raw_response)
-            except Exception as e:
-                st.error(f"❌ Помилка аналізу: {e}")
-                with st.expander("🐛 Деталі помилки"):
-                    st.exception(e)
-
-        if btn_disabled:
-            st.error("👈 Будь ласка, вибери хоча б один файл стандартів у меню зліва!")
-
-        # Відображення результатів
-        if st.session_state.analysis_df is not None:
-            df = st.session_state.analysis_df
-            
-            # Метрики
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Всього проблем", len(df))
-            with col2:
-                high_count = len(df[df['criticality'] == 'High']) if 'criticality' in df.columns else 0
-                st.metric("Критичних", high_count, delta=None, delta_color="inverse")
-            with col3:
-                unique_pages = df['page'].nunique() if 'page' in df.columns else 0
-                st.metric("Сторінок з проблемами", unique_pages)
-            
-            st.divider()
-            
-            # Налаштування таблиці
-            gb = GridOptionsBuilder.from_dataframe(df)
-            gb.configure_default_column(
-                resizable=True,
-                wrapText=True,
-                autoHeight=True,
-                sortable=True,
-                filter=True
-            )
-            
-            # Налаштування колонок
-            if 'issue' in df.columns:
-                gb.configure_column("issue", width=400)
-            if 'fix' in df.columns:
-                gb.configure_column("fix", width=400)
-            if 'component' in df.columns:
-                gb.configure_column("component", width=200)
-            if 'page' in df.columns:
-                gb.configure_column("page", width=80)
-            if 'criticality' in df.columns:
-                gb.configure_column("criticality", width=120)
+                # Налаштування колонок
+                if 'issue' in df.columns:
+                    gb.configure_column("issue", width=400)
+                if 'fix' in df.columns:
+                    gb.configure_column("fix", width=400)
+                if 'component' in df.columns:
+                    gb.configure_column("component", width=200)
+                if 'page' in df.columns:
+                    gb.configure_column("page", width=80)
+                if 'criticality' in df.columns:
+                    gb.configure_column("criticality", width=120)
+                    
+                    # Колір для criticality
+                    jscode = JsCode("""
+                    function(params) {
+                        if (params.value === 'High') {
+                            return {'color': 'white', 'backgroundColor': '#dc3545', 'fontWeight': 'bold'};
+                        }
+                        if (params.value === 'Medium') {
+                            return {'color': 'black', 'backgroundColor': '#ffc107'};
+                        }
+                        if (params.value === 'Low') {
+                            return {'color': 'black', 'backgroundColor': '#28a745', 'color': 'white'};
+                        }
+                        return {'color': 'black', 'backgroundColor': 'white'};
+                    };
+                    """)
+                    gb.configure_column("criticality", cellStyle=jscode)
                 
-                # Колір для criticality
-                jscode = JsCode("""
-                function(params) {
-                    if (params.value === 'High') {
-                        return {'color': 'white', 'backgroundColor': '#dc3545', 'fontWeight': 'bold'};
-                    }
-                    if (params.value === 'Medium') {
-                        return {'color': 'black', 'backgroundColor': '#ffc107'};
-                    }
-                    if (params.value === 'Low') {
-                        return {'color': 'black', 'backgroundColor': '#28a745', 'color': 'white'};
-                    }
-                    return {'color': 'black', 'backgroundColor': 'white'};
-                };
-                """)
-                gb.configure_column("criticality", cellStyle=jscode)
-            
-            gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=20)
-            gb.configure_selection(selection_mode="multiple", use_checkbox=True)
-            
-            gridOptions = gb.build()
+                gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=20)
+                gb.configure_selection(selection_mode="multiple", use_checkbox=True)
+                
+                gridOptions = gb.build()
 
-            grid_response = AgGrid(
-                df,
-                gridOptions=gridOptions,
-                height=500,
-                allow_unsafe_jscode=True,
-                enable_enterprise_modules=False,
-                theme="streamlit",
-                key='analysis_grid',
-                reload_data=False
-            )
-
-            # Експорт
-            st.divider()
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                excel_data = to_excel(df)
-                st.download_button(
-                    label="📥 Завантажити Excel",
-                    data=excel_data,
-                    file_name=f"analysis_{Path(uploaded_file.name).stem}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True
-                )
-            
-            with col2:
-                csv_data = df.to_csv(index=False).encode('utf-8-sig')
-                st.download_button(
-                    label="📥 Завантажити CSV",
-                    data=csv_data,
-                    file_name=f"analysis_{Path(uploaded_file.name).stem}.csv",
-                    mime="text/csv",
-                    use_container_width=True
+                grid_response = AgGrid(
+                    df,
+                    gridOptions=gridOptions,
+                    height=500,
+                    allow_unsafe_jscode=True,
+                    enable_enterprise_modules=False,
+                    theme="streamlit",
+                    key='analysis_grid',
+                    reload_data=False
                 )
 
-    # Видаляємо тимчасовий файл при виході
-    try:
-        os.unlink(tmp_file_path)
-    except:
-        pass
+                # Експорт
+                st.divider()
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    excel_data = to_excel(df)
+                    st.download_button(
+                        label="📥 Завантажити Excel",
+                        data=excel_data,
+                        file_name=f"analysis_{Path(uploaded_file.name).stem}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )
+                
+                with col2:
+                    csv_data = df.to_csv(index=False).encode('utf-8-sig')
+                    st.download_button(
+                        label="📥 Завантажити CSV",
+                        data=csv_data,
+                        file_name=f"analysis_{Path(uploaded_file.name).stem}.csv",
+                        mime="text/csv",
+                        use_container_width=True
+                    )
 
-else:
-    st.info("👆 Завантаж PDF креслення, щоб почати роботу")
-    # Очищаємо стан при відсутності файлу
-    st.session_state.analysis_df = None
-    st.session_state.last_uploaded_filename = None
+        # Видаляємо тимчасовий файл при виході
+        try:
+            os.unlink(tmp_file_path)
+        except:
+            pass
+
+    else:
+        st.info("👆 Завантаж PDF креслення, щоб почати роботу")
+        # Очищаємо стан при відсутності файлу
+        st.session_state.analysis_df = None
+        st.session_state.last_uploaded_filename = None
+
+# ==========================================
+# TAB 2: COMPARE (новий функціонал)
+# ==========================================
+with main_tab2:
+    st.subheader("⚖️ Порівняння файлів CSV")
+    st.caption("Завантажте два CSV файли для порівняння змін у файловій структурі")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        csv_file1 = st.file_uploader(
+            "📂 Перший CSV файл",
+            type=["csv"],
+            key="csv_file1",
+            help="Завантажте CSV файл з інформацією про файли"
+        )
+    
+    with col2:
+        csv_file2 = st.file_uploader(
+            "📂 Другий CSV файл",
+            type=["csv"],
+            key="csv_file2",
+            help="Завантажте CSV файл з інформацією про файли"
+        )
+    
+    if csv_file1 and csv_file2:
+        with st.spinner("🔄 Завантаження та порівняння файлів..."):
+            # Завантажуємо обидва файли
+            df1 = load_csv_file(csv_file1)
+            df2 = load_csv_file(csv_file2)
+            
+            if df1 is not None and df2 is not None:
+                # Порівнюємо файли
+                comparison = compare_csv_files(df1, df2, csv_file1.name, csv_file2.name)
+                
+                # Відображаємо інформацію про файли
+                st.success("✅ Файли успішно порівняно!")
+                
+                info_col1, info_col2 = st.columns(2)
+                with info_col1:
+                    st.info(f"📅 **Старіший файл:** {comparison['old_name']}")
+                with info_col2:
+                    st.info(f"📅 **Новіший файл:** {comparison['new_name']}")
+                
+                st.divider()
+                
+                # Метрики
+                metric_col1, metric_col2, metric_col3 = st.columns(3)
+                with metric_col1:
+                    st.metric("🆕 Нові файли", len(comparison['added']))
+                with metric_col2:
+                    st.metric("✏️ Змінені файли", len(comparison['modified']))
+                with metric_col3:
+                    st.metric("🗑️ Видалені файли", len(comparison['deleted']))
+                
+                st.divider()
+                
+                # Створюємо таби для результатів
+                result_tab1, result_tab2, result_tab3 = st.tabs([
+                    f"🆕 Нові файли ({len(comparison['added'])})",
+                    f"✏️ Змінені файли ({len(comparison['modified'])})",
+                    f"🗑️ Видалені файли ({len(comparison['deleted'])})"
+                ])
+                
+                # Таб 1: Нові файли
+                with result_tab1:
+                    if comparison['added']:
+                        st.subheader("Список нових файлів")
+                        for idx, file_path in enumerate(sorted(comparison['added']), 1):
+                            with st.container():
+                                col_a, col_b = st.columns([4, 1])
+                                with col_a:
+                                    st.text(f"{idx}. {file_path}")
+                                with col_b:
+                                    if st.button("📋 Копіювати", key=f"copy_new_{idx}"):
+                                        st.code(file_path.replace('/', '\\'), language=None)
+                                        st.success("Скопіюйте шлях вище ⬆️")
+                    else:
+                        st.info("✅ Нових файлів не знайдено")
+                
+                # Таб 2: Змінені файли
+                with result_tab2:
+                    if comparison['modified']:
+                        st.subheader("Список змінених файлів")
+                        for idx, file_path in enumerate(sorted(comparison['modified']), 1):
+                            with st.container():
+                                col_a, col_b = st.columns([4, 1])
+                                with col_a:
+                                    st.text(f"{idx}. {file_path}")
+                                with col_b:
+                                    if st.button("📋 Копіювати", key=f"copy_mod_{idx}"):
+                                        st.code(file_path.replace('/', '\\'), language=None)
+                                        st.success("Скопіюйте шлях вище ⬆️")
+                    else:
+                        st.info("✅ Змінених файлів не знайдено")
+                
+                # Таб 3: Видалені файли
+                with result_tab3:
+                    if comparison['deleted']:
+                        st.subheader("Список видалених файлів")
+                        for idx, file_path in enumerate(sorted(comparison['deleted']), 1):
+                            with st.container():
+                                st.text(f"{idx}. {file_path}")
+                    else:
+                        st.info("✅ Видалених файлів не знайдено")
+    else:
+        st.info("👆 Завантажте два CSV файли для порівняння")
 
 # Футер
 st.divider()
-# st.caption("🏗️ AI Drawing Engineer Pro | Powered by Google Gemini")
