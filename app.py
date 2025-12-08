@@ -27,20 +27,9 @@ st.set_page_config(
 def hide_branding():
     hide_styles = """
         <style>
-        /* Прибирає футер (нижній логотип) */
-        footer { visibility: hidden; }
-        
-        /* Прибирає кнопку 'Manage App' (якщо ви розробник) */
-        .stDeployButton { display: none; }
-        
-        /* Якщо ви НЕ хочете ховати весь TopBar через config, 
-           але хочете прибрати саме кнопку GitHub/Menu: */
-        #stDecoration { display: none; }
-
-        ._profilePreview_gzau3_63 {
-            display: none !important;
-        }
-
+            ._profilePreview_gzau3_63 {
+                display: none !important;
+            }
         </style>
     """
     st.markdown(hide_styles, unsafe_allow_html=True)
