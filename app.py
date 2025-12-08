@@ -36,6 +36,11 @@ def hide_branding():
         /* Якщо ви НЕ хочете ховати весь TopBar через config, 
            але хочете прибрати саме кнопку GitHub/Menu: */
         #stDecoration { display: none; }
+
+        ._profilePreview_gzau3_63 {
+            display: none !important;
+        }
+
         </style>
     """
     st.markdown(hide_styles, unsafe_allow_html=True)
