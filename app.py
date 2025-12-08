@@ -236,7 +236,7 @@ If no issues found, return: []
 # 🖥️ ОСНОВНИЙ ІНТЕРФЕЙС
 # ==========================================
 
-st.title("🏗️ AI Нормоконтроль: Modular Edition")
+# st.title("🏗️ AI Нормоконтроль: Modular Edition")
 
 # Ініціалізація session_state
 if 'analysis_df' not in st.session_state:
